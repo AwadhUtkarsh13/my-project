@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Price Predictor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72, #2a5298);
+            font-family: 'Roboto', sans-serif;
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            max-width: 800px;
+        }
+        .card {
+            background: rgba(255, 255, 255, 0.9);
+            border: none;
+            border-radius: 15px;
+            transition: transform 0.3s;
+            padding: 20px;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .btn-primary {
+            background: #ff6f61;
+            border: none;
+            transition: background 0.3s;
+        }
+        .btn-primary:hover {
+            background: #ff4d3d;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            border: none;
+        }
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        .prediction-container {
+            opacity: 0;
+            transition: opacity 0.5s;
+            margin-top: 20px;
+        }
+        .prediction-container.show {
+            opacity: 1;
+        }
+        #manualMode {
+            display: none;
+            margin-top: 15px;
+        }
+        #manualInput {
+            resize: vertical;
+            min-height: 100px;
+        }
+        .form-check-label {
+            cursor: default;
+            user-select: none;
+        }
+        .alert-success {
+            background: #ff4d3d;
+            color: #fff;
+            border: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container text-center">
+        <h1 class="mb-4 fw-bold">Stock Price Predictor</h1>
+        
+        <div class="card shadow-lg">
+            <div class="form-check form-switch mb-3 text-start">
+                <input class="form-check-input" type="checkbox" id="modeToggle" onclick="toggleMode()">
+                <span class="form-check-label fw-bold text-dark ms-2">Manual Input Mode</span>
+            </div>
+            
+            <div id="tickerMode">
+                <label for="tickerInput" class="form-label fw-bold text-dark">Enter Stock Ticker (e.g., AAPL):</label>
+                <input type="text" id="tickerInput" class="form-control" placeholder="AAPL" required>
+            </div>
+            <div id="manualMode">
+                <label for="manualInput" class="form-label fw-bold text-dark">Enter 60 Stock Prices (comma-separated):</label>
+                <textarea id="manualInput" class="form-control" rows="4" placeholder="e.g., 150.0, 151.2, 152.5, 153.0, 152.8, 154.1, 155.0, 156.3, 157.0, 156.8, 158.2, 159.0, 160.5, 161.2, 162.0, 161.8, 163.5, 164.0, 165.2, 166.0, 165.5, 164.8, 166.2, 167.0, 168.5, 169.2, 170.0, 169.8, 171.5, 172.0, 173.2, 174.0, 173.5, 172.8, 174.2, 175.0, 176.5, 177.2, 178.0, 177.8, 179.5, 180.0, 181.2, 182.0, 181.5, 180.8, 182.2, 183.0, 184.5, 185.2, 186.0, 185.8, 187.5, 188.0, 189.2, 190.0, 189.5, 188.8, 190.2, 191.0"></textarea>
+            </div>
+            
+            <div class="d-flex justify-content-between mt-3">
+                <button class="btn btn-primary w-50 me-2" onclick="predictStock()">Predict Next Price</button>
+                <button class="btn btn-secondary w-50 ms-2" onclick="clearForm()">Clear</button>
+            </div>
+            <div id="error" class="text-danger mt-2" style="display: none;"></div>
+        </div>
+
+        <div class="prediction-container" id="prediction">
+            <div id="result" class="alert alert-success" style="display: none;"></div>
+            <canvas id="predictionChart" style="max-height: 400px;"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        function toggleMode() {
+            const isManual = document.getElementById("modeToggle").checked;
+            document.getElementById("tickerMode").style.display = isManual ? "none" : "block";
+            document.getElementById("manualMode").style.display = isManual ? "block" : "none";
+            clearForm();
+        }
+
+        function clearForm() {
+            document.getElementById("tickerInput").value = "";
+            document.getElementById("manualInput").value = "";
+            document.getElementById("error").style.display = "none";
+            document.getElementById("result").style.display = "none";
+            document.getElementById("prediction").classList.remove("show");
+            const chartCanvas = document.getElementById("predictionChart");
+            if (chartCanvas.chart) {
+                chartCanvas.chart.destroy();
+            }
+        }
+
+        async function predictStock() {
+            const isManual = document.getElementById("modeToggle").checked;
+            const tickerInput = document.getElementById("tickerInput").value.trim();
+            const manualInput = document.getElementById("manualInput").value.trim();
+            const errorDiv = document.getElementById("error");
+            const resultDiv = document.getElementById("result");
+            const predictionContainer = document.getElementById("prediction");
+
+            errorDiv.style.display = "none";
+            resultDiv.style.display = "none";
+            predictionContainer.classList.remove("show");
+
+            let payload;
+            if (isManual) {
+                const prices = manualInput.split(",").map(num => parseFloat(num.trim()));
+                if (prices.length !== 60 || prices.some(isNaN)) {
+                    errorDiv.textContent = "Please enter exactly 60 valid numbers, separated by commas.";
+                    errorDiv.style.display = "block";
+                    return;
+                }
+                if (prices.some(price => price <= 0)) {
+                    errorDiv.textContent = "Stock prices must be positive numbers.";
+                    errorDiv.style.display = "block";
+                    return;
+                }
+                payload = { prices: prices };
+            } else {
+                if (!tickerInput) {
+                    errorDiv.textContent = "Please enter a valid stock ticker.";
+                    errorDiv.style.display = "block";
+                    return;
+                }
+                payload = { ticker: tickerInput };
+            }
+
+            try {
+                const response = await fetch("/predict", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+
+                const result = await response.json();
+                if (result.error) {
+                    errorDiv.textContent = result.error;
+                    errorDiv.style.display = "block";
+                    return;
+                }
+
+                resultDiv.textContent = `Predicted Next Price: $${result.prediction.toFixed(2)}`;
+                resultDiv.style.display = "block";
+
+                const ctx = document.getElementById("predictionChart").getContext("2d");
+                if (ctx.chart) {
+                    ctx.chart.destroy();
+                }
+                const chart = new Chart(ctx, {
+                    type: "line",
+                    data: {
+                        labels: Array.from({ length: result.recent_data.length + 1 }, (_, i) => i - result.recent_data.length),
+                        datasets: [
+                            {
+                                label: "Recent Prices",
+                                data: result.recent_data,
+                                borderColor: "#007bff",
+                                fill: false,
+                                pointRadius: 3,
+                                pointHoverRadius: 5
+                            },
+                            {
+                                label: "Predicted Price",
+                                data: [...result.recent_data, result.prediction],
+                                borderColor: "#ff4d3d",
+                                borderDash: [5, 5],
+                                fill: false,
+                                pointRadius: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5], // Only show point at prediction
+                                pointHoverRadius: 7
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        scales: {
+                            x: { title: { display: true, text: "Days" } },
+                            y: { title: { display: true, text: "Stock Price (USD)" } }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.dataset.label || '';
+                                        if (label) {
+                                            label += ': ';
+                                        }
+                                        label += `$${context.parsed.y.toFixed(2)}`;
+                                        return label;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                ctx.chart = chart;
+
+                predictionContainer.classList.add("show");
+            } catch (error) {
+                errorDiv.textContent = `Error: ${error.message}`;
+                errorDiv.style.display = "block";
+            }
+        }
+    </script>
+</body>
+</html>
