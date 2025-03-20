@@ -49,11 +49,17 @@ def evaluate_model(ticker="AAPL", seq_length=60, train_split=0.8):
     mae = mean_absolute_error(y_test_actual, predictions_actual)
     r2 = r2_score(y_test_actual, predictions_actual)
 
+    # Calculate accuracy: percentage of predictions within 5% of actual values
+    tolerance = 0.05  # 5% tolerance
+    within_tolerance = np.abs(predictions_actual - y_test_actual) <= tolerance * y_test_actual
+    accuracy = np.mean(within_tolerance) * 100  # Convert to percentage
+
     # Print results
     print(f"\nEvaluation Metrics for {ticker}:")
     print(f"Mean Squared Error (MSE): {mse:.4f}")
     print(f"Mean Absolute Error (MAE): {mae:.4f}")
     print(f"R-squared (R²): {r2:.4f}")
+    print(f"Accuracy (within {tolerance*100}% tolerance): {accuracy:.2f}%")
 
     # Plot actual vs predicted
     plt.figure(figsize=(12, 6))
