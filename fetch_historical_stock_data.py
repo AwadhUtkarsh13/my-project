@@ -72,7 +72,6 @@ def plot_stock_data(data, ticker, short_window, long_window):
 def load_cache(cache_file):
     try:
         data = pd.read_csv(cache_file, index_col=0, parse_dates=True)
-        # Verify index is datetime type; if not, try to convert manually
         if not pd.api.types.is_datetime64_any_dtype(data.index):
             data.index = pd.to_datetime(data.index, errors='coerce')
             if data.index.isnull().any():
@@ -88,55 +87,32 @@ def load_cache(cache_file):
             return data
         except Exception as e2:
             print(f"Failed to parse dates in index after retry: {e2}")
-            return data  # returning without datetime index, beware of potential issues
+            return data
 
-def main(force_refresh_cache=True):
-    tickers = ["AAPL", "MSFT", "GOOGL"]  # fallback list, you can add more
-    period_years = 10
-    stock_data = None
-    used_ticker = None
+def get_stock_data(ticker: str, period_years: int = 10, force_refresh_cache: bool = True) -> pd.DataFrame:
+    """
+    Fetch and cache historical stock data for use in preprocessing or modeling.
+    This function is designed for import use (e.g. in normalize_stock_data.py).
+    """
+    cache_file = f"{ticker}.csv"
 
-    for ticker in tickers:
-        cache_file = f"{ticker}.csv"
+    if not force_refresh_cache and os.path.exists(cache_file):
+        print(f"Loading cached data for {ticker}")
+        return load_cache(cache_file)
+    
+    print(f"Fetching fresh data for {ticker}...")
+    data = fetch_stock_data(ticker, period_years=period_years)
+    if data is not None and not data.empty:
+        data.to_csv(cache_file, index=True)
+        return data
+    else:
+        raise ValueError(f"Failed to fetch data for {ticker}")
 
-        if not force_refresh_cache and os.path.exists(cache_file):
-            print(f"Loading cached data for {ticker}")
-            stock_data = load_cache(cache_file)
-
-            # Fix numeric columns (sometimes saved as strings)
-            numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            for col in numeric_cols:
-                if col in stock_data.columns:
-                    stock_data[col] = pd.to_numeric(stock_data[col], errors='coerce')
-
-            used_ticker = ticker
-            break
-        else:
-            print(f"Fetching fresh data for {ticker}...")
-            stock_data = fetch_stock_data(ticker, period_years=period_years)
-            if stock_data is not None and not stock_data.empty:
-                stock_data.to_csv(cache_file, index=True)
-                used_ticker = ticker
-                break
-
-    if stock_data is None or stock_data.empty:
-        print("Failed to fetch data for all tickers.")
-        return
-
-    short_window = 50
-    long_window = 200
-    stock_data = calculate_moving_averages(stock_data, short_window, long_window)
-
-    print(f"\nData preview for {used_ticker}:")
-    print(stock_data.head())
-
-    print("\nMissing values in each column:")
-    print(stock_data.isnull().sum())
-
-    print("\nSummary statistics:")
-    print(stock_data.describe())
-
-    plot_stock_data(stock_data, used_ticker, short_window, long_window)
+def main():
+    ticker = "AAPL"
+    data = get_stock_data(ticker)
+    data = calculate_moving_averages(data)
+    plot_stock_data(data, ticker, 50, 200)
 
 if __name__ == "__main__":
-    main(force_refresh_cache=True)
+    main()
